@@ -154,6 +154,10 @@ class COCOTools:
         return categories_sparse
 
     def get_category_from_sparse(self, num: int):
+        if num >= len(self.category2sparsecategory_onehot):
+            logger.error(f"Category index {num} is out of range. Total Categories: {len(self.sparsecategory_onehot2category)}")
+            return "Unknown Category"
+
         return self.sparsecategory_onehot2category[num]
 
     def get_original_segmentations_mask_list(self, image_id):

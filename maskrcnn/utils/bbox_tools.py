@@ -1,4 +1,7 @@
 import numpy as np
+import tensorflow as tf
+
+tf.config.run_functions_eagerly(True)
 
 
 class BoundingBoxTools:
@@ -57,16 +60,22 @@ class BoundingBoxTools:
         :param base_boxes: input shape => (N, 4)
         :param regs: input shape => (N, 4)
         """
+        if base_boxes is None:
+            raise ValueError("base_boxes cannot be None")
+        if isinstance(base_boxes, tf.Tensor):
+            base_boxes = base_boxes.numpy()
+        print("base boxes", base_boxes)
+
         box_after_reg = np.zeros(shape=base_boxes.shape)
         base_box_xywh = cls.xxyy2xywh(base_boxes)
 
         box_after_reg[:, 0] = regs[:, 0] * base_box_xywh[:, 2] + base_box_xywh[:, 0]
         box_after_reg[:, 1] = regs[:, 1] * base_box_xywh[:, 3] + base_box_xywh[:, 1]
-        box_after_reg[:, 2] = np.exp(regs[:, 2]) * base_box_xywh[:, 2]
-        box_after_reg[:, 3] = np.exp(regs[:, 3]) * base_box_xywh[:, 3]
+        box_after_reg[:, 2] = np.exp(np.clip(regs[:, 2], a_min=-np.inf, a_max=5)) * base_box_xywh[:, 2]
+        box_after_reg[:, 3] = np.exp(np.clip(regs[:, 3], a_min=-np.inf, a_max=5)) * base_box_xywh[:, 3]
         box_after_reg = cls.xywh2xxyy(box_after_reg)
 
-        return box_after_reg.astype(np.int32)  # int -> int32
+        return box_after_reg.astype(np.int32)
 
     @classmethod
     def xxyy2xywh(cls, boxes):
@@ -95,6 +104,9 @@ class BoundingBoxTools:
         xyxy[:, 1] = boxes[:, 1] - (boxes[:, 3] - 1) / 2
         xyxy[:, 2] = boxes[:, 0] + (boxes[:, 2] - 1) / 2
         xyxy[:, 3] = boxes[:, 1] + (boxes[:, 3] - 1) / 2
+
+        # Solution: Invalid value encountered in cast
+        xyxy = np.nan_to_num(xyxy, nan=-1, posinf=-1, neginf=-1)
 
         return xyxy.astype(np.int32)
 

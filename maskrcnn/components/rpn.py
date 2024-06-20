@@ -4,7 +4,7 @@ from loguru import logger
 from maskrcnn.components import Backbone
 from maskrcnn.utils import BoundingBoxTools
 
-tf.compat.v1.disable_eager_execution()
+# tf.compat.v1.disable_eager_execution()
 
 
 class RPN:
@@ -17,8 +17,24 @@ class RPN:
         self.BATCH = batch
         self.lr = learning_rate
         self.backbone_model = backbone_model
-        back_outshape = backbone_model.output.shape[1:]
-        self.input_backbone = tf.keras.layers.Input(shape=backbone_model.input.shape[1:], name='backbone_input',
+        print(type(backbone_model.output))
+        print(backbone_model.output)
+        # back_outshape = backbone_model.output.shape[1:]
+
+        if isinstance(backbone_model.output, list):
+            back_outshape = backbone_model.output[0].shape[1:]
+        else:
+            back_outshape = backbone_model.output.shape[1:]
+        print(f"Backbone output shape: {back_outshape}")
+
+        # Handle multiple inputs
+        if isinstance(backbone_model.input, list):
+            input_shape = backbone_model.input[0].shape[1:]
+        else:
+            input_shape = backbone_model.input.shape[1:]
+        print(f"Backbone input shape: {input_shape}")
+
+        self.input_backbone = tf.keras.layers.Input(shape=input_shape, name='backbone_input',
                                                     dtype=tf.float32)
         self.input_rpn = tf.keras.layers.Input(shape=back_outshape, batch_size=None, name='input_rpn', dtype=tf.float32)
         self.conv1 = tf.keras.layers.Conv2D(filters=512, kernel_size=(3, 3), padding='same',
@@ -55,7 +71,7 @@ class RPN:
                                                  name='rpn_backbone_model')
         # print("layer", self.rpn_header_model.outputs)
         self.shape_anchor_target = self.rpn_header_model.get_layer(
-            name="tf_op_layer_rpn_anchor_pred" # name='tf.nn.softmax'
+            name='tf.nn.softmax' # name="tf_op_layer_rpn_anchor_pred"
         ).get_output_shape_at(0)[1:-1]
         self.shape_bbox_regression = self.rpn_header_model.get_layer(
             name='rpn_bbox_regression_pred'
@@ -69,7 +85,7 @@ class RPN:
     def process_image(self, img):
         rpn_anchor_pred, rpn_bbox_regression_pred = self.rpn_backbone_model.predict(img)
 
-        return rpn_anchor_pred, rpn_bbox_regression_pred
+        return [rpn_anchor_pred, rpn_bbox_regression_pred]
 
     def save_model(self, root_path: str):
         self.rpn_backbone_model.save_weights(filepath=f"{root_path}/rpn_model")

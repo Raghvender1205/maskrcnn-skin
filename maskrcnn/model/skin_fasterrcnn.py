@@ -58,28 +58,27 @@ class FasterRCNNModel():
     def nms_loop_np(self, boxes):
         # boxes : (N, 4), box_1target : (4,)
         # box axis format: (x1,y1,x2,y2)
+        epsilon = 1e-6
 
         box_1target = np.ones(shape=boxes.shape)
         zeros = np.zeros(shape=boxes.shape)
         box_1target = box_1target * boxes[0, :]
         box_b_area = (box_1target[:, 2] - box_1target[:, 0] + 1) * (box_1target[:, 3] - box_1target[:, 1] + 1)
-        # --- determine the (x, y)-coordinates of the intersection rectangle ---
+
+        # Determine the (x, y)-coordinates of the intersection rectangle ---
         x_a = np.max(np.array([boxes[:, 0], box_1target[:, 0]]), axis=0)
         y_a = np.max(np.array([boxes[:, 1], box_1target[:, 1]]), axis=0)
         x_b = np.min(np.array([boxes[:, 2], box_1target[:, 2]]), axis=0)
         y_b = np.min(np.array([boxes[:, 3], box_1target[:, 3]]), axis=0)
 
-        # --- compute the area of intersection rectangle ---
-        inter_area = np.max(np.array([zeros[:, 0], x_b - x_a + 1]), axis=0) * np.max(
-            np.array([zeros[:, 0], y_b - y_a + 1]),
-            axis=0)
-        # --- compute the area of both the prediction and ground-truth ---
-        # rectangles
-        box_a_area: Union[int, Any] = (boxes[:, 2] - boxes[:, 0] + 1) * (boxes[:, 3] - boxes[:, 1] + 1)
+        # Compute the area of intersection rectangle ---
+        inter_area = np.maximum(0, x_b - x_a + 1) * np.maximum(0, y_b - y_a + 1)
+        # Compute area of both prediction and ground truth rectangles
+        box_a_area = (boxes[:, 2] - boxes[:, 0] + 1) * (boxes[:, 3] - boxes[:, 1] + 1)
 
-        # compute the intersection over union by taking the intersection
+        # Compute the intersection over union by taking the intersection
         # area and dividing it by the sum of prediction + ground-truth
         # areas - the intersection area
-        ious = (inter_area / (box_a_area + box_b_area - inter_area))
+        ious = inter_area / (box_a_area + box_b_area - inter_area + epsilon)
 
         return ious

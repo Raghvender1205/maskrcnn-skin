@@ -13,6 +13,7 @@ from maskrcnn.model import FasterRCNNModel, SkinConfig
 
 model = FasterRCNNModel()
 
+
 # def test_loss_function():
 #     inputs, anchor_targets, bbox_targets = model.train_data_generator.generate_train_data_rpn_all()
 #     logger.info(f"{inputs.shape}, {anchor_targets.shape}, {bbox_targets.shape}")
@@ -112,7 +113,8 @@ def test_faster_rcnn_output():
 
 def test_proposal_visualization():
     image_ids = model.train_data_generator.dataset_coco.image_ids
-    inputs, anchor_targets, bbox_regression_targets = model.train_data_generator.generate_train_data_rpn_one(image_ids[0])
+    inputs, anchor_targets, bbox_regression_targets = model.train_data_generator.generate_train_data_rpn_one(
+        image_ids[0])
     logger.info(f"{inputs.shape}, {anchor_targets.shape}, {bbox_regression_targets.shape}")
     input1 = np.reshape(inputs[0, :, :, :], (1, SkinConfig.IMG_ORIGINAL_SHAPE[0], SkinConfig.IMG_ORIGINAL_SHAPE[1], 3))
     rpn_anchor_pred, rpn_bbox_regression_pred = model.rpn.process_image(input1)
@@ -127,7 +129,8 @@ def test_proposal_visualization():
     rpn_anchor_pred = tf.squeeze(rpn_anchor_pred)
     rpn_bbox_regression_pred = tf.squeeze(rpn_bbox_regression_pred)
     shape1 = tf.shape(rpn_anchor_pred)
-    logger.info(f"rpn_anchor_pred_shape: {rpn_anchor_pred.shape}, rpn_bbox_regression_pred_shape: {rpn_bbox_regression_pred.shape}")
+    logger.info(
+        f"rpn_anchor_pred_shape: {rpn_anchor_pred.shape}, rpn_bbox_regression_pred_shape: {rpn_bbox_regression_pred.shape}")
     # flatten the anchor pred to get top N values and indices
     rpn_anchor_pred = tf.reshape(rpn_anchor_pred, (-1,))
     n_anchor_proposal = SkinConfig.ANCHOR_N_PROPOSAL
@@ -198,24 +201,85 @@ def test_proposal_visualization():
 
 
 def test_total_visualization():
-    input_images, target_anchor_bboxes, target_classes = model.train_data_generator.generate_train_data_roi_one(
-        model.train_data_generator.dataset_coco.image_ids[0],
-        model.train_data_generator.generate_candidate_anchors.anchor_candidates_list)
+    try:
+        image_id = model.train_data_generator.dataset_coco.image_ids[0]
+        bbox_list = model.train_data_generator.generate_candidate_anchors.anchor_candidates_list
 
-    input_images, target_anchor_bboxes, target_classes = (np.asarray(input_images).astype(np.float32),
-                                                          np.asarray(target_anchor_bboxes), np.asarray(target_classes))
+        input_images, input_box_filtered_by_iou, target_classes, target_bbox_reg = model.train_data_generator.generate_train_data_roi_one(
+            image_id, bbox_list)
 
-    input_images2 = input_images[:1].astype(np.float32)
-    logger.info(input_images2.shape)
-    target_anchor_bboxes2 = target_anchor_bboxes[:1].astype(np.float32)
-    logger.info(target_anchor_bboxes2.shape)
-    class_header, box_regressor_head = model.roi.process_image([input_images2, target_anchor_bboxes2])
-    logger.info(class_header.shape, box_regressor_head.shape)
-    logger.info(class_header)
+        # Log the shapes for debugging
+        logger.info(f"Input Images Shape: {input_images.shape}")
+        logger.info(f"Input Boxes Shape: {input_box_filtered_by_iou.shape}")
+        logger.info(f"Target Classes Shape: {target_classes.shape}")
+        logger.info(f"Target BBox Regression Shape: {target_bbox_reg.shape}")
+
+        # Proceed with further processing or visualization
+        # Example: Process with RoI network
+        class_header, box_regressor_head = model.roi.process_image([input_images, input_box_filtered_by_iou])
+        logger.info(f"Class Header Shape: {class_header.shape}, Box Regressor Shape: {box_regressor_head.shape}")
+    except Exception as e:
+        logger.error(f"An error occurred: {str(e)}")
+
+
+def train_rpn_roi():
+    # TODO: use the output of RPN to train ROI
+    image_ids = model.train_data_generator.dataset_coco.image_ids
+    for epoch in range(SkinConfig.EPOCH):
+        logger.info(f"Epoch {epoch}")
+        temp_image_ids = random.choices(population=image_ids, weights=None, k=8)
+
+        for image_id in image_ids:
+            # Train ROI
+            input_img, input_box_filtered_by_iou, target_classes, target_bbox_regression = model.train_data_generator.generate_train_data_roi_one(
+                image_id, model.train_data_generator.generate_candidate_anchors.anchor_candidates_list
+            )
+            n_box = input_img.shape[0]
+            # backbone model only be trained once to balance RPN and ROI training
+            for j in range(n_box):
+                model.roi.train_step_backbone(input_img[j:j + 1] + 1, input_box_filtered_by_iou[j:j + 1],
+                                              target_classes[j:j + 1], target_bbox_regression[j:j + 1])
+
+            # Train RPN backbone
+            inputs, anchor_targets, bbox_regression_targets = model.train_data_generator.generate_train_data_rpn_one(
+                image_id)
+            model.rpn.train_step_backbone(inputs, anchor_targets, bbox_regression_targets)
+
+            # Train RPN Header
+            for j in range(n_box):
+                model.roi.train_step_backbone(input_img[0:1], input_box_filtered_by_iou[j:j + 1],
+                                              target_classes[j:j + 1], target_bbox_regression[j:j + 1])
+
+            # Train RPN with RPN proposed boxes
+            if epoch > 10:
+                rpn_anchor_pred, rpn_bbox_regression_pred = model.rpn.process_image(input_img[:1])
+                proposed_boxes = model.rpn._proposal_boxes(rpn_anchor_pred, rpn_bbox_regression_pred,
+                                                           model.anchor_candidates,
+                                                           model.anchor_candidate_generator.h,
+                                                           model.anchor_candidate_generator.w,
+                                                           model.anchor_candidate_generator.n_anchors,
+                                                           SkinConfig.ANCHOR_N_PROPOSAL,
+                                                           SkinConfig.ANCHOR_THRESHOLD)
+                if len(list(proposed_boxes.tolist())) == 0:
+                    continue
+                input_img, input_box_filtered_by_iou, target_classes, target_bbox_regression = model.train_data_generator.generate_train_data_roi_one(
+                    image_id, proposed_boxes.tolist()
+                )
+                for j in range(n_box):
+                    model.roi.train_step_header(input_img[j:j + 1], input_box_filtered_by_iou[j:j + 1],
+                                                   target_classes[j:j + 1], target_bbox_regression[j:j + 1])
+
+        # Train RPN header first
+        for image_id in image_ids:
+            inputs, anchor_targets, bbox_regression_targets = model.train_data_generator.generate_train_data_rpn_one(
+                image_id
+            )
+            model.rpn.train_step_header(inputs, anchor_targets, bbox_regression_targets)
 
 
 if __name__ == '__main__':
     # test_loss_function()
     # test_total_visualization()
     # test_faster_rcnn_output()
-    test_proposal_visualization()
+    # test_proposal_visualization()
+    train_rpn_roi()

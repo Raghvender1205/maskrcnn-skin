@@ -5,14 +5,16 @@ class RoI:
     def __init__(self, backbone_model, img_shape, n_output_classes: int = 80, learning_rate: float = 1e-4):
         self.backbone_model = backbone_model
         self.lr = learning_rate
-        self.input_backbone = tf.keras.Input(shape=backbone_model.input_shape[1:], dtype=tf.float32, name='backbone_input')
+        self.input_backbone = tf.keras.Input(shape=backbone_model.input_shape[1:], dtype=tf.float32,
+                                             name='backbone_input')
         proposal_boxes = tf.keras.Input(shape=(4,), batch_size=None, name='proposal_boxes', dtype=tf.float32)
         feature_map_shape = self.backbone_model.layers[-1].output_shape[1:]
-        feature_map = tf.keras.layers.Input(shape=feature_map_shape, batch_size=None, name='feature_map', dtype=tf.float32)
+        feature_map = tf.keras.layers.Input(shape=feature_map_shape, batch_size=None, name='feature_map',
+                                            dtype=tf.float32)
 
         shape1 = tf.shape(proposal_boxes, out_type=tf.int32)
         n_boxes = tf.gather_nd(shape1, [0])
-        indices = tf.zeros(shape=n_boxes, dtype=tf.int32) # only input 1 image, all indices are 0
+        indices = tf.zeros(shape=n_boxes, dtype=tf.int32)  # only input 1 image, all indices are 0
         img_shape_constant = tf.constant([img_shape[0], img_shape[1], img_shape[0], img_shape[1]], dtype=tf.float32)
         proposal_boxes2 = tf.math.divide(proposal_boxes, img_shape_constant)
 
@@ -59,6 +61,17 @@ class RoI:
             class_loss = tf.keras.losses.sparse_categorical_crossentropy(y_true=class_header, y_pred=pred_class)
             box_regression_loss = self.huber(y_true=box_regression_header, y_pred=box_regression_pred)
 
+            total_loss = tf.reduce_mean(tf.add(class_loss, box_regression_loss))
+        gradients = roi_tape.gradient(total_loss, self.roi_header_model.trainable_variables)
+        self.optimizer_header.apply_gradients(zip(gradients, self.roi_header_model.trainable_variables))
+
+    @tf.function
+    def train_step_header(self, input_image, proposal_box, class_header, box_regression_header):
+        with tf.GradientTape() as roi_tape:
+            class_pred, box_regression_pred = self.roi_backbone_model([input_image, proposal_box])
+            class_loss = tf.keras.losses.sparse_categorical_crossentropy(y_true=class_header, y_pred=class_pred)
+
+            box_regression_loss = self.huber(y_true=box_regression_header, y_pred=box_regression_pred)
             total_loss = tf.reduce_mean(tf.add(class_loss, box_regression_loss))
         gradients = roi_tape.gradient(total_loss, self.roi_header_model.trainable_variables)
         self.optimizer_header.apply_gradients(zip(gradients, self.roi_header_model.trainable_variables))

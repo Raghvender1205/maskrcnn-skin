@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 
 
 def test():
-    base_path = "D:/Internship/HealthKart/SkinSegmentation/HKSkin/custom_data"
-    image_folder_path = "D:/Internship/HealthKart/SkinSegmentation/HKSkin/custom_data/train/images"
+    base_path = "/Users/raghvender/Desktop/AI/SkinSegmentation/custom_data"
+    image_folder_path = "/Users/raghvender/Desktop/AI/SkinSegmentation/custom_data/train/images"
     image_id = '6'  # For testing.
     data1 = COCOTools(json_file=f"{base_path}/train/annotations.json",
                       image_folder_path=image_folder_path, resized_shape=FasterRCNNConfig.IMG_RESIZED_SHAPE)
@@ -35,8 +35,8 @@ def test():
 
 
 def test2():
-    base_path = "D:/Internship/HealthKart/SkinSegmentation/HKSkin/custom_data"
-    image_folder_path = "D:/Internship/HealthKart/SkinSegmentation/HKSkin/custom_data/train/images"
+    base_path = "/Users/raghvender/Desktop/AI/SkinSegmentation/custom_data"
+    image_folder_path = "/Users/raghvender/Desktop/AI/SkinSegmentation/custom_data/train/images"
     image_id = '6'  # For testing.
     t1 = DataGenerator(file=f"{base_path}/train/annotations.json",
                        image_folder_path=image_folder_path,
